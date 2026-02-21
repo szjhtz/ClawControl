@@ -240,6 +240,9 @@ npm run build:linux
 
 Output: `release/ClawControl-*.AppImage` and `release/clawcontrol_*_amd64.deb`
 
+Notes:
+- On Ubuntu/Debian you may need `libfuse2` installed for AppImage support (build/run).
+
 Install:
 - **AppImage**: `chmod +x release/ClawControl-*.AppImage` then run it
 - **Debian/Ubuntu (.deb)**: `sudo dpkg -i release/clawcontrol_*_amd64.deb`
