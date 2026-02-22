@@ -1,5 +1,5 @@
-import { useRef, useEffect, useMemo, Fragment, memo } from 'react'
-import { useStore, selectIsStreaming, selectHadStreamChunks, selectActiveToolCalls, ToolCall, SubagentInfo } from '../store'
+import { useRef, useEffect, useMemo, useState, Fragment, memo } from 'react'
+import { useStore, selectIsStreaming, selectHadStreamChunks, selectActiveToolCalls, selectStreamingThinking, selectIsCompacting, ToolCall, SubagentInfo } from '../store'
 import { Message, stripAnsi } from '../lib/openclaw'
 import { resolveToolDisplay, extractToolDetail } from '../lib/openclaw/tool-display'
 import { ToolIcon } from './ToolIcon'
@@ -17,6 +17,8 @@ export function ChatArea() {
   const isStreaming = useStore(selectIsStreaming)
   const hadStreamChunks = useStore(selectHadStreamChunks)
   const activeToolCalls = useStore(selectActiveToolCalls)
+  const streamingThinking = useStore(selectStreamingThinking)
+  const isCompacting = useStore(selectIsCompacting)
   const messages = useMemo(
     () => allMessages.filter((m) => m.role !== 'system'),
     [allMessages]
@@ -122,6 +124,7 @@ export function ChatArea() {
                 message={message}
                 agentName={currentAgent?.name}
                 agentAvatar={currentAgent?.avatar}
+                streamingThinking={index === messages.length - 1 && isStreaming && !message.thinking ? streamingThinking : undefined}
               />
               {msgSubagents && (
                 <div className="subagents-container">
@@ -148,6 +151,24 @@ export function ChatArea() {
             {subagentsByMessageId.get('__trailing__')!.map((sa) => (
               <SubagentBlock key={sa.sessionKey} subagent={sa} onOpen={openSubagentPopout} />
             ))}
+          </div>
+        )}
+
+        {isCompacting && isStreaming && (
+          <div className="message agent compaction-indicator-container">
+            <div className="message-avatar">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2a2 2 0 012 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 017 7h1a1 1 0 011 1v3a1 1 0 01-1 1h-1v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1H2a1 1 0 01-1-1v-3a1 1 0 011-1h1a7 7 0 017-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 012-2zm-4 12a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm8 0a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" />
+              </svg>
+            </div>
+            <div className="message-content">
+              <div className="compaction-indicator">
+                <svg className="spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                <span>Compacting context...</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -193,10 +214,12 @@ const MessageBubble = memo(function MessageBubble({
   message,
   agentName,
   agentAvatar,
+  streamingThinking,
 }: {
   message: Message
   agentName?: string
   agentAvatar?: string
+  streamingThinking?: string
 }) {
   const isUser = message.role === 'user'
   const time = format(new Date(message.timestamp), 'h:mm a')
@@ -230,17 +253,11 @@ const MessageBubble = memo(function MessageBubble({
           )}
         </div>
         <div className="message-bubble">
-          {message.thinking && (
-            <div className="thinking-block">
-              <div className="thinking-header">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 6v6l4 2" />
-                </svg>
-                <span>Thinking...</span>
-              </div>
-              <div className="thinking-content">{message.thinking}</div>
-            </div>
+          {(message.thinking || streamingThinking) && (
+            <ThinkingBlock
+              text={message.thinking || streamingThinking || ''}
+              streaming={!!streamingThinking && !message.thinking}
+            />
           )}
           <MessageContent content={message.content} images={message.images} />
         </div>
@@ -254,6 +271,34 @@ const MessageBubble = memo(function MessageBubble({
     </div>
   )
 })
+
+/** Collapsible thinking/reasoning block */
+function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const [collapsed, setCollapsed] = useState(true)
+
+  return (
+    <div className="thinking-block">
+      <button
+        className="thinking-header"
+        onClick={() => setCollapsed(!collapsed)}
+        type="button"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        </svg>
+        <span>Thinking{streaming ? '' : ' (done)'}</span>
+        {streaming && <span className="thinking-pulse" />}
+        <svg className={`thinking-chevron${collapsed ? '' : ' thinking-chevron--open'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {!collapsed && (
+        <div className="thinking-content">{text}</div>
+      )}
+    </div>
+  )
+}
 
 /** Renders a group of tool calls in their own agent-style bubble */
 function ToolCallBubble({ toolCalls, agentAvatar, agentName, onOpenPopout }: {

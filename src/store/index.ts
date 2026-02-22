@@ -111,6 +111,8 @@ interface AppState {
   streamingSessions: Record<string, boolean>
   sessionHadChunks: Record<string, boolean>
   sessionToolCalls: Record<string, ToolCall[]>
+  streamingThinking: Record<string, string>
+  compactingSession: string | null
   thinkingEnabled: boolean
   setThinkingEnabled: (enabled: boolean) => void
 
@@ -572,6 +574,8 @@ export const useStore = create<AppState>()(
       streamingSessions: {},
       sessionHadChunks: {},
       sessionToolCalls: {},
+      streamingThinking: {},
+      compactingSession: null,
       thinkingEnabled: false,
       setThinkingEnabled: (enabled) => set({ thinkingEnabled: enabled }),
 
@@ -1288,7 +1292,7 @@ export const useStore = create<AppState>()(
               role: msgPayload.role,
               content: msgPayload.content,
               timestamp: msgPayload.timestamp,
-              thinking: msgPayload.thinking,
+              thinking: msgPayload.thinking || get().streamingThinking[resolvedKey || ''] || undefined,
               images: msgPayload.images
             }
             let replacedStreaming = false
@@ -1403,7 +1407,7 @@ export const useStore = create<AppState>()(
           })
 
           client.on('disconnected', () => {
-            set({ connected: false, streamingSessions: {}, sessionHadChunks: {}, sessionToolCalls: {} })
+            set({ connected: false, streamingSessions: {}, sessionHadChunks: {}, sessionToolCalls: {}, streamingThinking: {}, compactingSession: null })
             get().stopSubagentPolling()
           })
 
@@ -1529,11 +1533,16 @@ export const useStore = create<AppState>()(
 
             // Clear per-session streaming state
             if (resolvedKey) {
-              set((state) => ({
-                streamingSessions: { ...state.streamingSessions, [resolvedKey]: false },
-                sessionHadChunks: { ...state.sessionHadChunks, [resolvedKey]: false },
-                streamingSessionId: state.streamingSessionId === resolvedKey ? null : state.streamingSessionId,
-              }))
+              set((state) => {
+                const { [resolvedKey]: _t, ...restThinking } = state.streamingThinking
+                return {
+                  streamingSessions: { ...state.streamingSessions, [resolvedKey]: false },
+                  sessionHadChunks: { ...state.sessionHadChunks, [resolvedKey]: false },
+                  streamingSessionId: state.streamingSessionId === resolvedKey ? null : state.streamingSessionId,
+                  streamingThinking: restThinking,
+                  compactingSession: state.compactingSession === resolvedKey ? null : state.compactingSession,
+                }
+              })
             } else {
               set({ streamingSessionId: null })
             }
@@ -1541,6 +1550,41 @@ export const useStore = create<AppState>()(
             // Only stop subagent polling if the current session's stream ended
             if (!sessionKey || !currentSessionId || sessionKey === currentSessionId) {
               get().stopSubagentPolling()
+            }
+          })
+
+          client.on('thinkingChunk', (payload: unknown) => {
+            const { text, cumulative, sessionKey } = payload as {
+              text: string; cumulative: boolean; sessionKey?: string
+            }
+            const { currentSessionId } = get()
+            const resolvedKey = sessionKey || currentSessionId
+            if (!resolvedKey) return
+
+            const isCurrentSession = !sessionKey || !currentSessionId || sessionKey === currentSessionId
+            if (!isCurrentSession) return
+
+            set((state) => {
+              const prev = state.streamingThinking[resolvedKey] || ''
+              const next = cumulative ? text : prev + text
+              return {
+                streamingThinking: { ...state.streamingThinking, [resolvedKey]: next }
+              }
+            })
+          })
+
+          client.on('compaction', (payload: unknown) => {
+            const { phase, sessionKey } = payload as { phase: string; willRetry: boolean; sessionKey?: string }
+            const { currentSessionId } = get()
+            const resolvedKey = sessionKey || currentSessionId
+            if (!resolvedKey) return
+
+            if (phase === 'start') {
+              set({ compactingSession: resolvedKey })
+            } else if (phase === 'end') {
+              set((state) => ({
+                compactingSession: state.compactingSession === resolvedKey ? null : state.compactingSession
+              }))
             }
           })
 
@@ -1747,12 +1791,16 @@ export const useStore = create<AppState>()(
 
         // Reset streaming state for this session
         // Keep activeSubagents so previous subagent blocks stay visible in chat
-        set((state) => ({
-          streamingSessions: { ...state.streamingSessions, [sessionId!]: true },
-          sessionHadChunks: { ...state.sessionHadChunks, [sessionId!]: false },
-          sessionToolCalls: { ...state.sessionToolCalls, [sessionId!]: [] },
-          streamingSessionId: sessionId
-        }))
+        set((state) => {
+          const { [sessionId!]: _t, ...restThinking } = state.streamingThinking
+          return {
+            streamingSessions: { ...state.streamingSessions, [sessionId!]: true },
+            sessionHadChunks: { ...state.sessionHadChunks, [sessionId!]: false },
+            sessionToolCalls: { ...state.sessionToolCalls, [sessionId!]: [] },
+            streamingThinking: restThinking,
+            streamingSessionId: sessionId
+          }
+        })
 
         // Add user message immediately
         const userMessage: Message = {
@@ -1904,6 +1952,8 @@ const _emptyToolCalls: ToolCall[] = []
 export const selectIsStreaming = (state: AppState) => !!state.streamingSessions[state.currentSessionId || '']
 export const selectHadStreamChunks = (state: AppState) => !!state.sessionHadChunks[state.currentSessionId || '']
 export const selectActiveToolCalls = (state: AppState) => state.sessionToolCalls[state.currentSessionId || ''] || _emptyToolCalls
+export const selectStreamingThinking = (state: AppState) => state.streamingThinking[state.currentSessionId || ''] || ''
+export const selectIsCompacting = (state: AppState) => state.compactingSession === state.currentSessionId
 
 // Vite HMR: disconnect stale WebSocket connections when modules are hot-replaced.
 // Without this, old module versions keep processing events, causing duplicate streams.

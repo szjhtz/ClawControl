@@ -532,6 +532,139 @@ describe('OpenClawClient', () => {
     })
   })
 
+  describe('thinking stream handling', () => {
+    it('should emit thinkingChunk for thinking stream events with cumulative text', () => {
+      const thinkingHandler = vi.fn()
+      client.on('thinkingChunk', thinkingHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'thinking',
+        data: { text: 'Let me think about this...' }
+      })
+
+      expect(thinkingHandler).toHaveBeenCalledTimes(1)
+      expect(thinkingHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Let me think about this...',
+          cumulative: true
+        })
+      )
+    })
+
+    it('should emit thinkingChunk with delta text when no cumulative text', () => {
+      const thinkingHandler = vi.fn()
+      client.on('thinkingChunk', thinkingHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'thinking',
+        data: { delta: 'thinking delta' }
+      })
+
+      expect(thinkingHandler).toHaveBeenCalledTimes(1)
+      expect(thinkingHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'thinking delta',
+          cumulative: false
+        })
+      )
+    })
+
+    it('should trigger streamStart on first thinking event', () => {
+      const streamStartHandler = vi.fn()
+      client.on('streamStart', streamStartHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'thinking',
+        data: { text: 'Thinking...' }
+      })
+
+      expect(streamStartHandler).toHaveBeenCalledTimes(1)
+    })
+
+    it('should not emit thinkingChunk for empty thinking data', () => {
+      const thinkingHandler = vi.fn()
+      client.on('thinkingChunk', thinkingHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'thinking',
+        data: {}
+      })
+
+      expect(thinkingHandler).not.toHaveBeenCalled()
+    })
+
+    it('should accumulate thinking across multiple cumulative events', () => {
+      const thinkingHandler = vi.fn()
+      client.on('thinkingChunk', thinkingHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'thinking',
+        data: { text: 'Step 1' }
+      })
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'thinking',
+        data: { text: 'Step 1. Step 2' }
+      })
+
+      expect(thinkingHandler).toHaveBeenCalledTimes(2)
+      expect(thinkingHandler).toHaveBeenNthCalledWith(1, expect.objectContaining({ text: 'Step 1', cumulative: true }))
+      expect(thinkingHandler).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'Step 1. Step 2', cumulative: true }))
+    })
+  })
+
+  describe('compaction stream handling', () => {
+    it('should emit compaction event with start phase', () => {
+      const compactionHandler = vi.fn()
+      client.on('compaction', compactionHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'compaction',
+        data: { phase: 'start' }
+      })
+
+      expect(compactionHandler).toHaveBeenCalledTimes(1)
+      expect(compactionHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: 'start', willRetry: false })
+      )
+    })
+
+    it('should emit compaction event with end phase and willRetry', () => {
+      const compactionHandler = vi.fn()
+      client.on('compaction', compactionHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'compaction',
+        data: { phase: 'end', willRetry: true }
+      })
+
+      expect(compactionHandler).toHaveBeenCalledTimes(1)
+      expect(compactionHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: 'end', willRetry: true })
+      )
+    })
+
+    it('should not trigger streamStart for compaction events', () => {
+      const streamStartHandler = vi.fn()
+      client.on('streamStart', streamStartHandler)
+
+      // @ts-expect-error - accessing private method for testing
+      client.handleNotification('agent', {
+        stream: 'compaction',
+        data: { phase: 'start' }
+      })
+
+      expect(streamStartHandler).not.toHaveBeenCalled()
+    })
+  })
+
   describe('listSessions', () => {
     it('should return sessions after connecting', async () => {
       await client.connect()

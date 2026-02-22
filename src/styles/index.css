@@ -1551,13 +1551,45 @@ a {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--accent-amber);
-  margin-bottom: var(--space-sm);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
 }
 
 .thinking-header svg {
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
+}
+
+.thinking-header svg:first-child {
   animation: spin 2s linear infinite;
+}
+
+.thinking-chevron {
+  margin-left: auto;
+  transition: transform var(--transition-fast);
+}
+
+.thinking-chevron--open {
+  transform: rotate(180deg);
+}
+
+.thinking-pulse {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-amber);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
 }
 
 @keyframes spin {
@@ -1569,6 +1601,27 @@ a {
   font-size: 0.875rem;
   color: var(--text-secondary);
   font-style: italic;
+  margin-top: var(--space-sm);
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Compaction indicator */
+.compaction-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.compaction-indicator svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-cyan);
 }
 
 /* Tool Call Cards */

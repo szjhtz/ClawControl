@@ -310,7 +310,7 @@ export async function sendMessage(call: RpcCaller, params: {
   payload.sessionKey = params.sessionId || (params.agentId ? `agent:${params.agentId}:main` : 'agent:main:main')
 
   if (params.thinking) {
-    payload.thinking = 'normal'
+    payload.thinking = 'low'
   }
   if (params.attachments && params.attachments.length > 0) {
     payload.attachments = params.attachments

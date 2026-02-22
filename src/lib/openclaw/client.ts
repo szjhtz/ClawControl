@@ -317,7 +317,7 @@ export class OpenClawClient {
           platform: 'web',
           mode: 'ui'
         },
-        caps: ['tool-events'],
+        caps: ['tool-events', 'thinking-events'],
         auth: this.token
           ? (this.authMode === 'password' ? { password: this.token } : { token: this.token })
           : undefined,
@@ -628,6 +628,11 @@ export class OpenClawClient {
           if (payload.message) {
             const text = stripSystemNotifications(extractTextFromContent(payload.message.content)).trim()
             const images = extractImagesFromContent(payload.message.content)
+            let thinking: string | undefined
+            if (Array.isArray(payload.message.content)) {
+              const thinkingBlock = payload.message.content.find((c: any) => c.type === 'thinking')
+              if (thinkingBlock?.thinking) thinking = thinkingBlock.thinking
+            }
             if ((text && !isNoiseContent(text)) || images.length > 0) {
               const id =
                 (typeof payload.message.id === 'string' && payload.message.id) ||
@@ -641,6 +646,7 @@ export class OpenClawClient {
                 role: payload.message.role,
                 content: isHeartbeatContent(text) ? '\u2764\uFE0F' : text,
                 timestamp: new Date(tsMs).toISOString(),
+                thinking,
                 images: images.length > 0 ? images : undefined,
                 sessionKey: eventSessionKey
               })
@@ -706,6 +712,33 @@ export class OpenClawClient {
             sessionKey: eventSessionKey
           }
           this.emit('toolCall', toolPayload)
+        } else if (payload.stream === 'thinking') {
+          this.maybeEmitSessionKey(payload.runId, sk)
+
+          if (!ss.started) {
+            ss.started = true
+            this.emit('streamStart', { sessionKey: sk })
+          }
+
+          // Prefer cumulative text, fall back to delta
+          const thinkingText = typeof payload.data?.text === 'string'
+            ? payload.data.text
+            : typeof payload.data?.delta === 'string'
+              ? payload.data.delta
+              : ''
+
+          if (thinkingText) {
+            this.emit('thinkingChunk', {
+              text: thinkingText,
+              cumulative: typeof payload.data?.text === 'string',
+              sessionKey: eventSessionKey
+            })
+          }
+        } else if (payload.stream === 'compaction') {
+          this.maybeEmitSessionKey(payload.runId, sk)
+          const phase = payload.data?.phase // 'start' or 'end'
+          const willRetry = payload.data?.willRetry ?? false
+          this.emit('compaction', { phase, willRetry, sessionKey: eventSessionKey })
         } else if (payload.stream === 'lifecycle') {
           this.maybeEmitSessionKey(payload.runId, sk)
           const phase = payload.data?.phase
