@@ -50,17 +50,25 @@ export class OpenClawClient {
   }>()
   private eventHandlers = new Map<string, Set<EventHandler>>()
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 10
+  private maxReconnectAttempts = 20
   private authenticated = false
   private deviceIdentity: DeviceIdentity | null = null
   private deviceName: string | null = null
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null
   private static HEALTH_CHECK_INTERVAL = 15000 // 15s
   private static HEALTH_CHECK_TIMEOUT = 10000  // 10s
+  /** Timestamp of last received WebSocket message — used to skip redundant health checks. */
+  private lastMessageAt = 0
+  /** Server tick interval (from hello-ok policy), default 30s. */
+  private tickIntervalMs = 30000
+  /** Watchdog timer that detects missed server ticks (dead connection). */
+  private tickWatchTimer: ReturnType<typeof setTimeout> | null = null
   /** When true, suppresses reconnect (auth failures, cert errors, etc.) */
   private suppressReconnect = false
   /** Track whether certError has been emitted this connect cycle */
   private certErrorEmitted = false
+  /** Bound handler for network change events (for cleanup). */
+  private networkChangeHandler: (() => void) | null = null
 
   // Per-session stream tracking — allows concurrent agent conversations
   // without cross-contaminating stream text buffers.
@@ -129,6 +137,7 @@ export class OpenClawClient {
           this.reconnectAttempts = 0
           this.suppressReconnect = false
           this.certErrorEmitted = false
+          this.startNetworkListener()
         }
 
         this.ws.onerror = (error: any) => {
@@ -170,7 +179,10 @@ export class OpenClawClient {
         this.ws.onclose = () => {
           this.authenticated = false
           this.stopHealthCheck()
+          this.stopTickWatch()
           this.resetStreamState()
+          // Reject all in-flight RPC requests so callers don't hang for 30s
+          this.rejectPendingRequests('Connection lost')
           this.emit('disconnected')
           settle(reject, new Error('WebSocket closed before handshake completed'))
           this.attemptReconnect()
@@ -222,7 +234,10 @@ export class OpenClawClient {
     }
 
     this.reconnectAttempts++
-    const delay = 1000
+    // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s, with ±25% jitter
+    const base = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
+    const jitter = base * 0.25 * (Math.random() * 2 - 1) // ±25%
+    const delay = Math.round(base + jitter)
 
     setTimeout(() => {
       this.connect().catch(() => { })
@@ -232,6 +247,8 @@ export class OpenClawClient {
   disconnect(): void {
     this.maxReconnectAttempts = 0 // Prevent auto-reconnect
     this.stopHealthCheck()
+    this.stopTickWatch()
+    this.stopNetworkListener()
     if (this.ws) {
       // Null out handlers BEFORE close() so the socket stops processing
       // messages immediately. ws.close() is async — without this, events
@@ -251,6 +268,9 @@ export class OpenClawClient {
     this.stopHealthCheck()
     this.healthCheckTimer = setInterval(() => {
       if (!this.ws || this.ws.readyState !== this.ws.OPEN || !this.authenticated) return
+
+      // Skip health check if we received a message recently (connection is alive)
+      if (Date.now() - this.lastMessageAt < OpenClawClient.HEALTH_CHECK_INTERVAL) return
 
       const id = (++this.requestId).toString()
       const request = { type: 'req', method: 'skills.status', params: {}, id }
@@ -290,6 +310,76 @@ export class OpenClawClient {
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer)
       this.healthCheckTimer = null
+    }
+  }
+
+  /** Reset the tick watchdog — called whenever we receive a server tick event. */
+  private resetTickWatch(): void {
+    if (this.tickWatchTimer) clearTimeout(this.tickWatchTimer)
+    // If no tick arrives within 2× the interval, the connection is likely dead
+    this.tickWatchTimer = setTimeout(() => {
+      this.tickWatchTimer = null
+      if (this.ws && this.ws.readyState === this.ws.OPEN) {
+        // Force close — onclose will trigger reconnect
+        this.ws.onmessage = null
+        this.ws.close()
+      }
+    }, this.tickIntervalMs * 2)
+  }
+
+  private stopTickWatch(): void {
+    if (this.tickWatchTimer) {
+      clearTimeout(this.tickWatchTimer)
+      this.tickWatchTimer = null
+    }
+  }
+
+  /** Listen for network changes (online/offline, WiFi↔cellular) and proactively reconnect. */
+  private startNetworkListener(): void {
+    this.stopNetworkListener()
+    if (typeof globalThis.addEventListener !== 'function') return
+
+    this.networkChangeHandler = () => {
+      // Network came back online — if the socket is dead, force a reconnect
+      if (this.ws && this.ws.readyState !== this.ws.OPEN && !this.suppressReconnect) {
+        this.reconnectAttempts = 0 // Reset backoff on network change
+        this.attemptReconnect()
+      }
+      // If the socket appears open but might be stale (network switch), run an
+      // immediate health check by sending a lightweight request.
+      if (this.ws && this.ws.readyState === this.ws.OPEN && this.authenticated) {
+        const id = (++this.requestId).toString()
+        const request = { type: 'req', method: 'skills.status', params: {}, id }
+        this.pendingRequests.set(id, {
+          resolve: () => { this.pendingRequests.delete(id) },
+          reject: () => { this.pendingRequests.delete(id) }
+        })
+        try { this.ws.send(JSON.stringify(request)) } catch { /* socket dead, onclose will fire */ }
+      }
+    }
+
+    globalThis.addEventListener('online', this.networkChangeHandler)
+    // 'connection' type change (e.g. WiFi → cellular) — available via Network Information API
+    if ((globalThis.navigator as any)?.connection) {
+      (globalThis.navigator as any).connection.addEventListener?.('change', this.networkChangeHandler)
+    }
+  }
+
+  private stopNetworkListener(): void {
+    if (!this.networkChangeHandler) return
+    globalThis.removeEventListener?.('online', this.networkChangeHandler)
+    if ((globalThis.navigator as any)?.connection) {
+      (globalThis.navigator as any).connection.removeEventListener?.('change', this.networkChangeHandler)
+    }
+    this.networkChangeHandler = null
+  }
+
+  /** Reject all pending RPC requests (e.g. on socket close) so callers don't hang. */
+  private rejectPendingRequests(reason: string): void {
+    const pending = Array.from(this.pendingRequests.entries())
+    this.pendingRequests.clear()
+    for (const [, { reject }] of pending) {
+      try { reject(new Error(reason)) } catch { /* ignore */ }
     }
   }
 
@@ -368,6 +458,7 @@ export class OpenClawClient {
   }
 
   private handleMessage(data: string, resolve?: () => void, reject?: (err: Error) => void): void {
+    this.lastMessageAt = Date.now()
     try {
       const message = JSON.parse(data)
 
@@ -395,7 +486,13 @@ export class OpenClawClient {
         // Special case: Initial Connect Response
         if (!this.authenticated && resFrame.ok && resFrame.payload?.type === 'hello-ok') {
           this.authenticated = true
+          // Capture server tick interval from hello-ok policy (if provided)
+          const policyTick = resFrame.payload?.policy?.tickIntervalMs
+          if (typeof policyTick === 'number' && policyTick > 0) {
+            this.tickIntervalMs = policyTick
+          }
           this.startHealthCheck()
+          this.resetTickWatch() // Start watching for server ticks
           this.emit('connected', resFrame.payload)
           resolve?.()
           return
@@ -779,6 +876,10 @@ export class OpenClawClient {
         }
         break
       }
+      case 'tick':
+        // Server keepalive — reset the tick watchdog so we don't false-positive
+        this.resetTickWatch()
+        break
       case 'exec.approval.requested':
         this.emit('execApprovalRequested', payload)
         break
