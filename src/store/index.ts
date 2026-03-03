@@ -591,6 +591,16 @@ export const useStore = create<AppState>()(
         if (activeProfileId) {
           get().updateServerProfile(activeProfileId, { nodeEnabled: enabled })
         }
+        if (!enabled) {
+          // Disconnect node client and stop foreground service immediately
+          const existing = (globalThis as any).__clawdeskNodeClient as NodeClient | undefined
+          if (existing) {
+            existing.disconnect()
+            ;(globalThis as any).__clawdeskNodeClient = null
+            set({ nodeConnected: false })
+          }
+          Platform.stopForegroundService()
+        }
       },
       nodeConnected: false,
       nodePermissions: getDefaultPermissions(Platform.getPlatform()),
@@ -636,10 +646,14 @@ export const useStore = create<AppState>()(
         )
         nodeClient.on('connected', () => {
           set({ nodeConnected: true })
+          Platform.startForegroundService()
           const opClient = get().client
           if (opClient) syncNodePermissionsToServer(opClient, nodePermissions)
         })
-        nodeClient.on('disconnected', () => set({ nodeConnected: false }))
+        nodeClient.on('disconnected', () => {
+          set({ nodeConnected: false })
+          Platform.stopForegroundService()
+        })
         ;(globalThis as any).__clawdeskNodeClient = nodeClient
         try {
           await nodeClient.connect()
@@ -2411,6 +2425,7 @@ export const useStore = create<AppState>()(
             )
             nodeClient.on('connected', (payload: unknown) => {
               set({ nodeConnected: true })
+              Platform.startForegroundService()
               // Store the node's device token from hello-ok
               if (serverHost && payload && typeof payload === 'object') {
                 const helloOk = payload as Record<string, any>
@@ -2423,7 +2438,10 @@ export const useStore = create<AppState>()(
               const opClient = get().client
               if (opClient) syncNodePermissionsToServer(opClient, get().nodePermissions)
             })
-            nodeClient.on('disconnected', () => set({ nodeConnected: false }))
+            nodeClient.on('disconnected', () => {
+              set({ nodeConnected: false })
+              Platform.stopForegroundService()
+            })
             nodeClient.on('pairingRequired', (payload: unknown) => {
               const { deviceId } = (payload || {}) as { deviceId?: string }
               set({
@@ -2454,6 +2472,7 @@ export const useStore = create<AppState>()(
                 )
                 retryClient.on('connected', (p: unknown) => {
                   set({ nodeConnected: true })
+                  Platform.startForegroundService()
                   if (serverHost && p && typeof p === 'object') {
                     const dt = (p as Record<string, any>).auth?.deviceToken
                     if (typeof dt === 'string' && dt) {
@@ -2463,7 +2482,10 @@ export const useStore = create<AppState>()(
                   const opClient = get().client
                   if (opClient) syncNodePermissionsToServer(opClient, get().nodePermissions)
                 })
-                retryClient.on('disconnected', () => set({ nodeConnected: false }))
+                retryClient.on('disconnected', () => {
+                  set({ nodeConnected: false })
+                  Platform.stopForegroundService()
+                })
                 retryClient.on('pairingRequired', (p: unknown) => {
                   const { deviceId } = (p || {}) as { deviceId?: string }
                   set({ pairingStatus: 'pending', pairingDeviceId: deviceId || null, showSettings: true })
@@ -2560,6 +2582,7 @@ export const useStore = create<AppState>()(
           nodeClient.disconnect()
           ;(globalThis as any).__clawdeskNodeClient = null
         }
+        Platform.stopForegroundService()
         set({ client: null, connected: false, pendingMessages: [], nodeConnected: false })
       },
 

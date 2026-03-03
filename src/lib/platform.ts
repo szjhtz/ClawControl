@@ -621,6 +621,29 @@ export async function getDeviceStatus(): Promise<DeviceStatusInfo> {
   return info
 }
 
+// Android foreground service for node mode keepalive
+export async function startForegroundService(): Promise<void> {
+  if (getPlatform() !== 'android') return
+  try {
+    const { Capacitor: Cap } = await import('@capacitor/core')
+    const plugin = (Cap as any).Plugins?.ConnectionService
+    if (plugin) await plugin.start()
+  } catch {
+    // Plugin not available
+  }
+}
+
+export async function stopForegroundService(): Promise<void> {
+  if (getPlatform() !== 'android') return
+  try {
+    const { Capacitor: Cap } = await import('@capacitor/core')
+    const plugin = (Cap as any).Plugins?.ConnectionService
+    if (plugin) await plugin.stop()
+  } catch {
+    // Plugin not available
+  }
+}
+
 // App visibility tracking
 let _appIsActive = true
 
