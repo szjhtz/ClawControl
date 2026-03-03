@@ -12,3 +12,6 @@ export const APP_VERSION = pkg.version as string
 export const OPENCLAW_CLIENT_ID = 'openclaw-control-ui'
 export const OPENCLAW_CLIENT_MODE = 'ui'
 export const OPENCLAW_ROLE = 'operator'
+
+// Node mode — used for the parallel node WebSocket connection
+export const OPENCLAW_NODE_ROLE = 'node'

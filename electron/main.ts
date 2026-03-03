@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, safeStorage, Notification, protocol, net } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Menu, safeStorage, Notification, protocol, net, clipboard } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { spawn, ChildProcess } from 'child_process'
 import crypto from 'crypto'
+import os from 'os'
 import { pathToFileURL } from 'url'
 
 // On Windows production builds, serve via a custom protocol scheme to avoid file:// origin issues
@@ -552,6 +553,32 @@ ipcMain.handle('clawhub:install', async (_event, slug: string, targetDir: string
   const extractedFiles = await extractZipToDir(zipBuffer, targetDir)
 
   return { ok: true, files: extractedFiles }
+})
+
+// --- Clipboard access ---
+
+ipcMain.handle('clipboard:read', async () => {
+  return clipboard.readText()
+})
+
+ipcMain.handle('clipboard:write', async (_event, text: string) => {
+  if (typeof text !== 'string') throw new Error('Invalid text')
+  clipboard.writeText(text)
+})
+
+// --- Device status ---
+
+ipcMain.handle('device:status', async () => {
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    hostname: os.hostname(),
+    memory: {
+      total: os.totalmem(),
+      free: os.freemem()
+    },
+    uptime: os.uptime()
+  }
 })
 
 // --- Ed25519 crypto (Node.js, since Chromium Web Crypto lacks Ed25519) ---

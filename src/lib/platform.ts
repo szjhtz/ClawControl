@@ -555,6 +555,72 @@ export async function trackMessageAndMaybeRequestReview(): Promise<void> {
   }
 }
 
+// Clipboard access
+export async function clipboardRead(): Promise<string> {
+  const platform = getPlatform()
+
+  if (platform === 'electron' && (window as any).electronAPI?.clipboardRead) {
+    return await (window as any).electronAPI.clipboardRead()
+  }
+
+  // Web & mobile: navigator.clipboard
+  if (navigator.clipboard?.readText) {
+    return await navigator.clipboard.readText()
+  }
+
+  throw new Error('Clipboard read not available')
+}
+
+export async function clipboardWrite(text: string): Promise<void> {
+  const platform = getPlatform()
+
+  if (platform === 'electron' && (window as any).electronAPI?.clipboardWrite) {
+    await (window as any).electronAPI.clipboardWrite(text)
+    return
+  }
+
+  // Web & mobile: navigator.clipboard
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  throw new Error('Clipboard write not available')
+}
+
+// Device status info returned by getDeviceStatus()
+export interface DeviceStatusInfo {
+  platform: string
+  arch?: string
+  hostname?: string
+  battery?: number
+  memory?: { total: number; free: number }
+  uptime?: number
+}
+
+export async function getDeviceStatus(): Promise<DeviceStatusInfo> {
+  const platform = getPlatform()
+
+  if (platform === 'electron' && (window as any).electronAPI?.getDeviceStatus) {
+    return await (window as any).electronAPI.getDeviceStatus()
+  }
+
+  if (isNativeMobile()) {
+    // Basic mobile device info from Capacitor core (no extra plugin needed)
+    return { platform: Capacitor.getPlatform() }
+  }
+
+  // Web fallback
+  const info: DeviceStatusInfo = { platform: 'web' }
+  if ((navigator as any).getBattery) {
+    try {
+      const battery = await (navigator as any).getBattery()
+      info.battery = battery.level
+    } catch { /* not available */ }
+  }
+  return info
+}
+
 // App visibility tracking
 let _appIsActive = true
 

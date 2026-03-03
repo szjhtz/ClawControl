@@ -21,6 +21,8 @@ export function SettingsModal() {
     setNotificationsEnabled,
     streamingDisabled,
     setStreamingDisabled,
+    nodeEnabled,
+    setNodeEnabled,
     openServerSettings,
     theme,
     toggleTheme,
@@ -668,6 +670,21 @@ export function SettingsModal() {
               </label>
             </label>
             <span className="form-hint">Show responses as they stream in. When off, the full response appears at once.</span>
+          </div>
+
+          <div className="form-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Node Mode</span>
+              <label className="toggle-switch" style={{ marginLeft: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={nodeEnabled}
+                  onChange={(e) => setNodeEnabled(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </label>
+            <span className="form-hint">Allow the AI agent to invoke commands on this device (clipboard, notifications, device info)</span>
           </div>
 
           {connected && (

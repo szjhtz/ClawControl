@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { OpenClawClient, Message, Session, Agent, Skill, CronJob, Hook, HooksConfig, AgentFile, CreateAgentParams, buildIdentityContent, stripBase64FromStreaming } from '../lib/openclaw'
+import { NodeClient } from '../lib/node'
 import type { Node, ExecApprovalsResponse, DevicePairListResponse, ExecApprovalDecision } from '../lib/openclaw'
 import type { ClawHubSkill, ClawHubSort } from '../lib/clawhub'
 import { listClawHubSkills, searchClawHub, getClawHubSkill, getClawHubSkillVersion, getClawHubSkillConvex } from '../lib/clawhub'
@@ -18,6 +19,7 @@ export interface ServerProfile {
   serverUrl: string
   authMode: 'token' | 'password'
   deviceName: string
+  nodeEnabled?: boolean
 }
 
 interface PerProfileState {
@@ -133,6 +135,11 @@ interface AppState {
   pairingStatus: 'none' | 'pending'
   pairingDeviceId: string | null
   retryConnect: () => Promise<void>
+
+  // Node Mode
+  nodeEnabled: boolean
+  setNodeEnabled: (enabled: boolean) => void
+  nodeConnected: boolean
 
   // Settings Modal
   showSettings: boolean
@@ -454,6 +461,12 @@ export const useStore = create<AppState>()(
             (globalThis as any).__clawdeskClient = null
           }
         }
+        // Disconnect node client
+        const existingNode = (globalThis as any).__clawdeskNodeClient as NodeClient | undefined
+        if (existingNode) {
+          existingNode.disconnect()
+          ;(globalThis as any).__clawdeskNodeClient = null
+        }
 
         // Clear in-memory caches
         _sessionMessagesCache.clear()
@@ -494,6 +507,8 @@ export const useStore = create<AppState>()(
           pinnedSessionKeys: profileState.pinnedSessionKeys,
           collapsedSessionGroups: profileState.collapsedSessionGroups,
           mainView: 'chat',
+          nodeEnabled: profile.nodeEnabled ?? false,
+          nodeConnected: false,
         })
       },
       getActiveProfile: () => {
@@ -532,6 +547,9 @@ export const useStore = create<AppState>()(
       connectionError: null,
       setConnectionError: (error) => set({ connectionError: error }),
       client: null,
+      nodeEnabled: false,
+      setNodeEnabled: (enabled) => set({ nodeEnabled: enabled }),
+      nodeConnected: false,
       deviceName: '',
       setDeviceName: (name) => {
         set({ deviceName: name })
@@ -2275,6 +2293,93 @@ export const useStore = create<AppState>()(
             get().fetchHooks()
           ])
 
+          // Start node client if enabled — await so pairing status is known before connect() returns
+          if (get().nodeEnabled) {
+            // Resolve the node's own device token (separate from operator's token)
+            let nodeToken = gatewayToken
+            if (serverHost) {
+              try {
+                const storedNodeToken = await getDeviceToken(serverHost, 'node')
+                if (storedNodeToken) nodeToken = storedNodeToken
+              } catch { /* ignore */ }
+            }
+
+            const nodeClient = new NodeClient(
+              serverUrl,
+              nodeToken,
+              get().authMode,
+              wsFactory,
+              deviceIdentity,
+              get().deviceName || undefined
+            )
+            nodeClient.on('connected', (payload: unknown) => {
+              set({ nodeConnected: true })
+              // Store the node's device token from hello-ok
+              if (serverHost && payload && typeof payload === 'object') {
+                const helloOk = payload as Record<string, any>
+                const dt = helloOk.auth?.deviceToken
+                if (typeof dt === 'string' && dt) {
+                  saveDeviceToken(serverHost, dt, 'node').catch(() => { })
+                }
+              }
+            })
+            nodeClient.on('disconnected', () => set({ nodeConnected: false }))
+            nodeClient.on('pairingRequired', (payload: unknown) => {
+              const { deviceId } = (payload || {}) as { deviceId?: string }
+              set({
+                pairingStatus: 'pending',
+                pairingDeviceId: deviceId || null,
+                showSettings: true
+              })
+            })
+            ;(globalThis as any).__clawdeskNodeClient = nodeClient
+            try {
+              await nodeClient.connect()
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : ''
+              if (errMsg === 'NOT_PAIRED') {
+                // Handled by the pairingRequired event above
+              } else if (serverHost && nodeToken !== gatewayToken) {
+                // Stale node device token — clear and retry with gateway token
+                await clearDeviceToken(serverHost, 'node')
+                nodeClient.disconnect()
+                const retryClient = new NodeClient(
+                  serverUrl,
+                  gatewayToken,
+                  get().authMode,
+                  wsFactory,
+                  deviceIdentity,
+                  get().deviceName || undefined
+                )
+                retryClient.on('connected', (p: unknown) => {
+                  set({ nodeConnected: true })
+                  if (serverHost && p && typeof p === 'object') {
+                    const dt = (p as Record<string, any>).auth?.deviceToken
+                    if (typeof dt === 'string' && dt) {
+                      saveDeviceToken(serverHost, dt, 'node').catch(() => { })
+                    }
+                  }
+                })
+                retryClient.on('disconnected', () => set({ nodeConnected: false }))
+                retryClient.on('pairingRequired', (p: unknown) => {
+                  const { deviceId } = (p || {}) as { deviceId?: string }
+                  set({ pairingStatus: 'pending', pairingDeviceId: deviceId || null, showSettings: true })
+                })
+                ;(globalThis as any).__clawdeskNodeClient = retryClient
+                try {
+                  await retryClient.connect()
+                } catch (retryErr) {
+                  const retryMsg = retryErr instanceof Error ? retryErr.message : ''
+                  if (retryMsg !== 'NOT_PAIRED') {
+                    console.warn('[node] Failed to connect after token retry:', retryMsg)
+                  }
+                }
+              } else {
+                console.warn('[node] Failed to connect:', errMsg)
+              }
+            }
+          }
+
           // Reload current session's messages so the chat view is fresh after reconnect
           const { currentSessionId: activeSession, client: freshClient } = get()
           if (activeSession && freshClient) {
@@ -2346,7 +2451,13 @@ export const useStore = create<AppState>()(
         if ((globalThis as any).__clawdeskClient === client) {
           (globalThis as any).__clawdeskClient = null
         }
-        set({ client: null, connected: false, pendingMessages: [] })
+        // Disconnect node client
+        const nodeClient = (globalThis as any).__clawdeskNodeClient as NodeClient | undefined
+        if (nodeClient) {
+          nodeClient.disconnect()
+          ;(globalThis as any).__clawdeskNodeClient = null
+        }
+        set({ client: null, connected: false, pendingMessages: [], nodeConnected: false })
       },
 
       sendMessage: async (content: string, attachments = []) => {
@@ -2623,7 +2734,8 @@ export const useStore = create<AppState>()(
         thinkingEnabled: state.thinkingEnabled,
         streamingDisabled: state.streamingDisabled,
         notificationsEnabled: state.notificationsEnabled,
-        rightPanelWidth: state.rightPanelWidth
+        rightPanelWidth: state.rightPanelWidth,
+        nodeEnabled: state.nodeEnabled
       })
     }
   )

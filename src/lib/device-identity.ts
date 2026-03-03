@@ -168,14 +168,15 @@ export async function signChallenge(
   identity: DeviceIdentity,
   nonce: string,
   token: string,
-  scopes: string[]
+  scopes: string[],
+  overrides?: { clientId?: string; clientMode?: string; role?: string }
 ): Promise<DeviceConnectField> {
   const signedAt = Date.now()
 
   // These values must match the `connect` payload.
-  const clientId = OPENCLAW_CLIENT_ID
-  const clientMode = OPENCLAW_CLIENT_MODE
-  const role = OPENCLAW_ROLE
+  const clientId = overrides?.clientId ?? OPENCLAW_CLIENT_ID
+  const clientMode = overrides?.clientMode ?? OPENCLAW_CLIENT_MODE
+  const role = overrides?.role ?? OPENCLAW_ROLE
 
   const scopesStr = scopes.join(',')
 
@@ -212,18 +213,21 @@ export async function signChallenge(
 
 // --- Per-server device token storage ---
 
-function deviceTokenKey(serverHost: string): string {
+function deviceTokenKey(serverHost: string, role?: string): string {
+  if (role && role !== 'operator') {
+    return `${DEVICE_TOKEN_PREFIX}${serverHost}:${role}`
+  }
   return `${DEVICE_TOKEN_PREFIX}${serverHost}`
 }
 
-export async function getDeviceToken(serverHost: string): Promise<string | null> {
-  return storageGet(deviceTokenKey(serverHost))
+export async function getDeviceToken(serverHost: string, role?: string): Promise<string | null> {
+  return storageGet(deviceTokenKey(serverHost, role))
 }
 
-export async function saveDeviceToken(serverHost: string, token: string): Promise<void> {
-  await storageSet(deviceTokenKey(serverHost), token)
+export async function saveDeviceToken(serverHost: string, token: string, role?: string): Promise<void> {
+  await storageSet(deviceTokenKey(serverHost, role), token)
 }
 
-export async function clearDeviceToken(serverHost: string): Promise<void> {
-  await storageRemove(deviceTokenKey(serverHost))
+export async function clearDeviceToken(serverHost: string, role?: string): Promise<void> {
+  await storageRemove(deviceTokenKey(serverHost, role))
 }

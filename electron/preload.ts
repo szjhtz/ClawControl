@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clawhubInstall: (slug: string, targetDir: string) => ipcRenderer.invoke('clawhub:install', slug, targetDir),
   generateEd25519KeyPair: () => ipcRenderer.invoke('crypto:generateEd25519'),
   signEd25519: (privateKeyJwk: JsonWebKey, payload: string) => ipcRenderer.invoke('crypto:signEd25519', privateKeyJwk, payload),
+  clipboardRead: () => ipcRenderer.invoke('clipboard:read'),
+  clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text),
+  getDeviceStatus: () => ipcRenderer.invoke('device:status'),
   speechRecognize: (timeoutSec?: number) => ipcRenderer.invoke('speech:recognize', timeoutSec),
   speechStop: () => ipcRenderer.invoke('speech:stop'),
   speechAvailable: () => ipcRenderer.invoke('speech:available'),
@@ -46,6 +49,9 @@ declare global {
       clawhubInstall: (slug: string, targetDir: string) => Promise<{ ok: boolean; files: string[] }>
       generateEd25519KeyPair: () => Promise<{ id: string; publicKeyBase64url: string; privateKeyJwk: JsonWebKey }>
       signEd25519: (privateKeyJwk: JsonWebKey, payload: string) => Promise<string>
+      clipboardRead: () => Promise<string>
+      clipboardWrite: (text: string) => Promise<void>
+      getDeviceStatus: () => Promise<{ platform: string; arch: string; hostname: string; memory: { total: number; free: number }; uptime: number }>
       speechRecognize: (timeoutSec?: number) => Promise<{ text: string; error?: string }>
       speechStop: () => Promise<void>
       speechAvailable: () => Promise<boolean>
