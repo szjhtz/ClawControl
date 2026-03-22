@@ -3,6 +3,8 @@ import { useStore } from '../store'
 import { getPlatform, openExternal } from '../lib/platform'
 import { clearDeviceToken } from '../lib/device-identity'
 import { NodePermissionsDialog } from './NodePermissionsDialog'
+import { ConfirmDialog } from './ConfirmDialog'
+import { showToast } from './ToastContainer'
 
 export function SettingsModal() {
   const {
@@ -55,6 +57,7 @@ export function SettingsModal() {
   const [autoRetryTimer, setAutoRetryTimer] = useState<ReturnType<typeof setInterval> | null>(null)
   const [nextRetryIn, setNextRetryIn] = useState(0)
   const [showNodePermissions, setShowNodePermissions] = useState(false)
+  const [profileToDelete, setProfileToDelete] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     setUrl(serverUrl)
@@ -383,7 +386,7 @@ export function SettingsModal() {
                               {profile.name}
                             </span>
                           )}
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={profile.serverUrl}>
                             {profile.serverUrl}
                           </span>
                         </div>
@@ -392,9 +395,7 @@ export function SettingsModal() {
                             className="profile-delete-btn"
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (confirm(`Delete profile "${profile.name}"?`)) {
-                                deleteServerProfile(profile.id)
-                              }
+                              setProfileToDelete({ id: profile.id, name: profile.name })
                             }}
                             title="Delete profile"
                           >
@@ -750,6 +751,21 @@ export function SettingsModal() {
           )}
         </div>
       </div>
+
+      {profileToDelete && (
+        <ConfirmDialog
+          title="Delete Profile"
+          message={`Delete profile "${profileToDelete.name}"? This will remove all saved connection settings for this profile.`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => {
+            deleteServerProfile(profileToDelete.id)
+            showToast('Profile deleted')
+            setProfileToDelete(null)
+          }}
+          onCancel={() => setProfileToDelete(null)}
+        />
+      )}
     </div>
   )
 }

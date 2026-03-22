@@ -2961,8 +2961,10 @@ export const useStore = create<AppState>()(
                 content: isAuthOrScope
                   ? `Message failed: ${errMsg}`
                   : 'Message failed to send — connection lost. Reconnecting...',
-                timestamp: new Date().toISOString()
-              }],
+                timestamp: new Date().toISOString(),
+                failedContent: content,
+                failedAttachments: attachments
+              } as Message],
               streamingSessions: { ...state.streamingSessions, [sessionId]: false },
               streamingSessionId: null
             }))

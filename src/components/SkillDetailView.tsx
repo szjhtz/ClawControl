@@ -1,4 +1,5 @@
 import { useStore } from '../store'
+import { showToast } from './ToastContainer'
 
 export function SkillDetailView() {
   const { selectedSkill, closeDetailView, toggleSkillEnabled, client, fetchSkills } = useStore()
@@ -7,6 +8,7 @@ export function SkillDetailView() {
 
   const handleToggle = async () => {
     await toggleSkillEnabled(selectedSkill.id, !selectedSkill.enabled)
+    showToast(`Skill ${!selectedSkill.enabled ? 'enabled' : 'disabled'}`)
   }
 
   const handleInstall = async (installId: string) => {

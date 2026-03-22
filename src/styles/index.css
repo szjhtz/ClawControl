@@ -6861,3 +6861,324 @@ body.capacitor-mobile .context-menu-divider {
   background: var(--border-subtle);
   margin: var(--space-xs) 0;
 }
+
+/* ===== UX Improvements ===== */
+
+/* --- Confirm Dialog --- */
+.confirm-dialog {
+  max-width: 400px;
+}
+
+.btn-danger {
+  background: var(--accent-red);
+  color: #fff;
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* --- Toast Notifications --- */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: toastIn 0.3s ease;
+  max-width: 360px;
+}
+
+.toast--success .toast-icon { color: var(--accent-green); }
+.toast--error .toast-icon { color: var(--accent-red); }
+.toast--info .toast-icon { color: var(--accent-cyan); }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* --- Chat Search Bar --- */
+.chat-search-bar {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-search-bar > svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.chat-search-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: var(--font-body);
+  min-width: 0;
+}
+
+.chat-search-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+.chat-search-count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.chat-search-nav,
+.chat-search-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chat-search-nav:hover,
+.chat-search-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-search-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* --- Scroll-to-Bottom Unread Badge --- */
+.scroll-to-bottom-btn {
+  position: relative;
+}
+
+.scroll-to-bottom-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--accent-cyan);
+  color: var(--bg-deep);
+  font-size: 0.625rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* --- Chat Loading Skeleton --- */
+.chat-loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.skeleton-message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.skeleton-message.user {
+  justify-content: flex-end;
+}
+
+.skeleton-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  flex-shrink: 0;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  max-width: 400px;
+}
+
+.skeleton-lines.right {
+  align-items: flex-end;
+}
+
+.skeleton-line {
+  height: 14px;
+  border-radius: 7px;
+  background: var(--bg-hover);
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* --- Progressive Character Count --- */
+.char-count .caution {
+  color: var(--accent-amber);
+}
+
+.char-count .warning {
+  color: #f97316;
+}
+
+.char-count .danger {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+/* --- Voice Error Retry Button --- */
+.voice-retry-btn {
+  background: none;
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all var(--transition-fast);
+}
+
+.voice-retry-btn:hover {
+  background: var(--accent-cyan-subtle);
+}
+
+/* --- Pin Button Visibility --- */
+.pin-btn {
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.message:hover .pin-btn,
+.pin-btn.pinned,
+.pin-btn:focus-visible {
+  opacity: 1;
+}
+
+/* Make pinned messages always show the pin icon on mobile */
+body.capacitor-mobile .pin-btn {
+  opacity: 1;
+}
+
+/* --- Mobile Touch Target Improvements --- */
+body.capacitor-mobile .top-bar-actions button,
+body.capacitor-mobile .panel-toggle,
+body.capacitor-mobile .theme-toggle,
+body.capacitor-mobile .settings-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+body.capacitor-mobile .panel-tab {
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-md);
+}
+
+body.capacitor-mobile .session-item {
+  min-height: 56px;
+}
+
+body.capacitor-mobile .session-pin,
+body.capacitor-mobile .session-delete {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+/* --- Failed Message Retry --- */
+.error-bubble {
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.message-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.message-retry-btn:hover {
+  background: var(--accent-cyan-subtle);
+}
+
+/* Mobile toast position */
+body.capacitor-mobile .toast-container {
+  bottom: calc(var(--keyboard-height, 0px) + 80px);
+  left: 16px;
+  right: 16px;
+}
+
+body.capacitor-mobile .toast {
+  max-width: 100%;
+}

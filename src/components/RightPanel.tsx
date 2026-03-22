@@ -127,10 +127,12 @@ export function RightPanel() {
         onMouseDown={handleResizeStart}
       />
       <div className="panel-header">
-        <div className="panel-tabs">
+        <div className="panel-tabs" role="tablist" aria-label="Panel tabs">
           <button
             className={`panel-tab ${rightPanelTab === 'skills' ? 'active' : ''}`}
             data-testid="tab-skills"
+            role="tab"
+            aria-selected={rightPanelTab === 'skills'}
             onClick={() => setRightPanelTab('skills')}
           >
             Skills
@@ -138,6 +140,8 @@ export function RightPanel() {
           <button
             className={`panel-tab ${rightPanelTab === 'crons' ? 'active' : ''}`}
             data-testid="tab-crons"
+            role="tab"
+            aria-selected={rightPanelTab === 'crons'}
             onClick={() => setRightPanelTab('crons')}
           >
             Cron Jobs
@@ -145,6 +149,8 @@ export function RightPanel() {
           <button
             className={`panel-tab ${rightPanelTab === 'hooks' ? 'active' : ''}`}
             data-testid="tab-hooks"
+            role="tab"
+            aria-selected={rightPanelTab === 'hooks'}
             onClick={() => setRightPanelTab('hooks')}
           >
             Hooks
@@ -168,9 +174,10 @@ export function RightPanel() {
         </svg>
         <input
           type="text"
-          placeholder="Search..."
+          placeholder={rightPanelTab === 'skills' ? 'Search skills...' : rightPanelTab === 'crons' ? 'Search cron jobs...' : 'Search hooks...'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label={`Search ${rightPanelTab}`}
         />
       </div>
 

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../store'
+import { showToast } from './ToastContainer'
 
 // Resolve model value — server can return string or { primary, fallbacks }
 function resolveModel(m: unknown): string | undefined {
@@ -77,6 +78,8 @@ export function AgentDetailView() {
       if (!result.success) {
         setDeleteError(result.error || 'Failed to delete agent')
         setDeleting(false)
+      } else {
+        showToast('Agent deleted')
       }
     } catch {
       setDeleteError('Failed to delete agent')

@@ -23,6 +23,7 @@ import { NodesView } from './components/NodesView'
 import { AgentDashboard } from './components/AgentDashboard'
 import { CanvasPanel } from './components/CanvasPanel'
 import { MobileGestureLayer } from './components/MobileGestureLayer'
+import { ToastContainer } from './components/ToastContainer'
 import {
   isNativeMobile,
   getPlatform,
@@ -179,6 +180,9 @@ function App() {
 
       {/* Certificate Error Modal */}
       <CertErrorModal />
+
+      {/* Toast Notifications */}
+      <ToastContainer />
     </div>
   )
 

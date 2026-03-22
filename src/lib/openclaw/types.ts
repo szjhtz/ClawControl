@@ -9,6 +9,10 @@ export interface Message {
   images?: MessageImage[]
   audioUrl?: string
   audioAsVoice?: boolean
+  /** Original content of a failed message, for retry */
+  failedContent?: string
+  /** Original attachments of a failed message, for retry */
+  failedAttachments?: Array<{ type?: string; mimeType?: string; fileName?: string; content: string; previewUrl?: string }>
 }
 
 export interface MessageImage {

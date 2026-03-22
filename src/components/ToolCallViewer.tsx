@@ -15,9 +15,21 @@ interface StoredToolCall {
   startedAt: number
 }
 
+function getStoredTheme(): 'dark' | 'light' {
+  try {
+    const raw = localStorage.getItem('clawcontrol-storage')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed?.state?.theme === 'light') return 'light'
+    }
+  } catch { /* ignore */ }
+  return 'dark'
+}
+
 export function ToolCallViewer({ toolCallId }: { toolCallId: string }) {
   const [toolCall, setToolCall] = useState<StoredToolCall | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [theme] = useState(getStoredTheme)
 
   useEffect(() => {
     try {
@@ -34,7 +46,7 @@ export function ToolCallViewer({ toolCallId }: { toolCallId: string }) {
 
   if (error) {
     return (
-      <div className="toolcall-viewer" data-theme="dark">
+      <div className="toolcall-viewer" data-theme={theme}>
         <div className="toolcall-viewer-header">
           <span className="toolcall-viewer-error">{error}</span>
         </div>
@@ -44,7 +56,7 @@ export function ToolCallViewer({ toolCallId }: { toolCallId: string }) {
 
   if (!toolCall) {
     return (
-      <div className="toolcall-viewer" data-theme="dark">
+      <div className="toolcall-viewer" data-theme={theme}>
         <div className="toolcall-viewer-header">
           <span>Loading...</span>
         </div>
@@ -57,7 +69,7 @@ export function ToolCallViewer({ toolCallId }: { toolCallId: string }) {
   const isRunning = toolCall.phase === 'start'
 
   return (
-    <div className="toolcall-viewer" data-theme="dark">
+    <div className="toolcall-viewer" data-theme={theme}>
       <div className="toolcall-viewer-header">
         <div className="toolcall-viewer-title">
           <ToolIcon type={display.icon} size={18} />

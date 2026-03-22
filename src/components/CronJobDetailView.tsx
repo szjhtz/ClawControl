@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { openExternal } from '../lib/platform'
 import { useStore } from '../store'
+import { showToast } from './ToastContainer'
 import type { CronScheduleType, CronPayload, CronDelivery, CronSessionTarget, CronWakeMode } from '../lib/openclaw/types'
 
 export function CronJobDetailView() {
@@ -52,8 +53,10 @@ export function CronJobDetailView() {
 
   const handleToggle = async () => {
     if (!client) return
-    await client.toggleCronJob(selectedCronJob.id, selectedCronJob.status === 'paused')
+    const resuming = selectedCronJob.status === 'paused'
+    await client.toggleCronJob(selectedCronJob.id, resuming)
     await refreshDetail()
+    showToast(`Cron job ${resuming ? 'resumed' : 'paused'}`)
   }
 
   const handleRun = async () => {

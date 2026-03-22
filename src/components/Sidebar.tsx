@@ -6,6 +6,8 @@ import { Agent, Session } from '../lib/openclaw'
 import { groupSessionsByDate } from '../utils/dateGrouping'
 import { useLongPress } from '../hooks/useLongPress'
 import { SessionContextMenu } from './SessionContextMenu'
+import { ConfirmDialog } from './ConfirmDialog'
+import { showToast } from './ToastContainer'
 import { isNativeMobile } from '../lib/platform'
 import logoUrl from '../../build/icon.png'
 
@@ -152,6 +154,7 @@ export function Sidebar() {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, sessionId: string } | null>(null)
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [sessionToRename, setSessionToRename] = useState<{ id: string, title: string } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Close context menu on click elsewhere (desktop only — mobile uses SessionContextMenu's own listener)
   useEffect(() => {
@@ -176,10 +179,23 @@ export function Sidebar() {
   const handleRename = async (newLabel: string) => {
     if (sessionToRename) {
       await updateSessionLabel(sessionToRename.id, newLabel)
+      showToast('Session renamed')
       setShowRenameModal(false)
       setSessionToRename(null)
     }
   }
+
+  const handleDeleteRequest = useCallback((sessionKey: string) => {
+    setDeleteConfirm(sessionKey)
+  }, [])
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (deleteConfirm) {
+      deleteSession(deleteConfirm)
+      showToast('Session deleted')
+    }
+    setDeleteConfirm(null)
+  }, [deleteConfirm, deleteSession])
 
   return (
     <>
@@ -327,7 +343,7 @@ export function Sidebar() {
                       onSelect={setCurrentSession}
                       onContextMenu={handleContextMenu}
                       onLongPress={handleLongPress}
-                      onDelete={deleteSession}
+                      onDelete={handleDeleteRequest}
                       onTogglePin={togglePinSession}
                     />
                   ))}
@@ -368,7 +384,7 @@ export function Sidebar() {
                           onSelect={setCurrentSession}
                           onContextMenu={handleContextMenu}
                           onLongPress={handleLongPress}
-                          onDelete={deleteSession}
+                          onDelete={handleDeleteRequest}
                           onTogglePin={togglePinSession}
                         />
                       ))}
@@ -428,7 +444,7 @@ export function Sidebar() {
             onTogglePin={() => togglePinSession(contextMenu.sessionId)}
             onRename={() => setShowRenameModal(true)}
             onDelete={() => {
-              deleteSession(contextMenu.sessionId)
+              setDeleteConfirm(contextMenu.sessionId)
               setContextMenu(null)
             }}
             onClose={() => setContextMenu(null)}
@@ -483,6 +499,18 @@ export function Sidebar() {
             setShowRenameModal(false)
             setSessionToRename(null)
           }}
+        />
+      )}
+
+      {/* Delete Confirmation */}
+      {deleteConfirm && (
+        <ConfirmDialog
+          title="Delete Session"
+          message="This session and its messages will be permanently deleted. This cannot be undone."
+          confirmLabel="Delete"
+          destructive
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteConfirm(null)}
         />
       )}
     </>
@@ -568,7 +596,7 @@ const SessionItem = memo(function SessionItem({
             </span>
           )}
           <div className="session-title">
-            <span className="session-title-text">{resolvedAgentName || session.title}</span>
+            <span className="session-title-text" title={resolvedAgentName || session.title}>{resolvedAgentName || session.title}</span>
             {unreadCount > 0 && (
               <span className="session-badge">{unreadCount}</span>
             )}
@@ -607,9 +635,7 @@ const SessionItem = memo(function SessionItem({
             className="session-delete"
             onClick={(e) => {
               e.stopPropagation()
-              if (confirm('Delete this session? This cannot be undone.')) {
-                onDelete(sessionKey)
-              }
+              onDelete(sessionKey)
             }}
             aria-label="Delete session"
           >

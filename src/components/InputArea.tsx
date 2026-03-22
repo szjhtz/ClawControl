@@ -800,7 +800,7 @@ export function InputArea() {
           onBlur={handleTextareaBlur}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder="Type a message..."
+          placeholder="Type a message... (/ for commands)"
           rows={1}
           aria-label="Message input"
           data-testid="message-input"
@@ -856,13 +856,23 @@ export function InputArea() {
       </div>
       <div className="input-footer">
         <span className="char-count">
-          <span className={message.length > maxLength * 0.9 ? 'warning' : ''}>
+          <span className={message.length > maxLength * 0.95 ? 'danger' : message.length > maxLength * 0.9 ? 'warning' : message.length > maxLength * 0.75 ? 'caution' : ''}>
             {message.length}
           </span>
           {' '}/{' '}{maxLength}
         </span>
         {voiceError ? (
-          <span className="voice-error" role="status">{voiceError}</span>
+          <span className="voice-error" role="status">
+            {voiceError}
+            <button
+              type="button"
+              className="voice-retry-btn"
+              onClick={() => { setVoiceError(null); handleVoiceInput() }}
+              aria-label="Retry voice input"
+            >
+              Retry
+            </button>
+          </span>
         ) : (
           <span className="keyboard-hint">
             Press <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for new line

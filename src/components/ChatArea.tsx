@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState, useCallback, Fragment, memo } from 'react'
+import { useRef, useEffect, useMemo, useState, useCallback, Fragment, memo, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore, selectIsStreaming, selectHadStreamChunks, selectActiveToolCalls, selectStreamingThinking, selectIsCompacting, ToolCall, SubagentInfo } from '../store'
 import type { ExecApprovalDecision } from '../lib/openclaw'
@@ -67,6 +67,14 @@ export function ChatArea() {
   // Sticky scroll: only auto-scroll if user is near bottom
   const isAtBottom = useRef(true)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  // In-chat search
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // Count unread messages below viewport for scroll-to-bottom badge
+  const [unreadBelow, setUnreadBelow] = useState(0)
+  const lastSeenCountRef = useRef(0)
 
   // Resolve agent from the current session's agentId (e.g. from key "agent:jerry:...")
   // so each chat shows the correct agent name/avatar, not just the globally selected one.
@@ -143,9 +151,86 @@ export function ChatArea() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     isAtBottom.current = true
     setShowScrollToBottom(false)
-  }, [])
+    setUnreadBelow(0)
+    lastSeenCountRef.current = messages.length
+  }, [messages.length])
+
+  // Track new messages arriving while scrolled up
+  useEffect(() => {
+    if (isAtBottom.current) {
+      lastSeenCountRef.current = messages.length
+      setUnreadBelow(0)
+    } else if (messages.length > lastSeenCountRef.current) {
+      setUnreadBelow(messages.length - lastSeenCountRef.current)
+    }
+  }, [messages.length])
+
+  // Ctrl+F / Cmd+F to open search
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        setSearchOpen(true)
+        setTimeout(() => searchInputRef.current?.focus(), 50)
+      }
+      if (e.key === 'Escape' && searchOpen) {
+        setSearchOpen(false)
+        setSearchQuery('')
+        setSearchMatchIndex(0)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [searchOpen])
+
+  // Search match computation
+  const searchMatches = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    const q = searchQuery.toLowerCase()
+    return messages
+      .map((m, i) => ({ index: i, id: m.id }))
+      .filter(({ index }) => messages[index].content.toLowerCase().includes(q))
+  }, [messages, searchQuery])
+
+  const navigateSearch = useCallback((direction: 'next' | 'prev') => {
+    if (searchMatches.length === 0) return
+    const newIdx = direction === 'next'
+      ? (searchMatchIndex + 1) % searchMatches.length
+      : (searchMatchIndex - 1 + searchMatches.length) % searchMatches.length
+    setSearchMatchIndex(newIdx)
+    const msgId = searchMatches[newIdx]?.id
+    if (msgId) {
+      const el = document.querySelector(`[data-testid="message-${msgId}"]`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [searchMatches, searchMatchIndex])
+
+  // Track loading state for session switches
+  const [loadingSession, setLoadingSession] = useState(false)
+  useEffect(() => {
+    if (prevSessionRef.current !== currentSessionId) {
+      setLoadingSession(true)
+      const timer = setTimeout(() => setLoadingSession(false), 100)
+      return () => clearTimeout(timer)
+    }
+  }, [currentSessionId])
+  useEffect(() => {
+    if (messages.length > 0) setLoadingSession(false)
+  }, [messages.length])
 
   if (messages.length === 0) {
+    // Show skeleton when switching to a session that should have messages
+    if (loadingSession && currentSessionId) {
+      return (
+        <div className="chat-area" data-testid="chat-area">
+          <div className="chat-loading-skeleton">
+            <div className="skeleton-message agent"><div className="skeleton-avatar" /><div className="skeleton-lines"><div className="skeleton-line" style={{ width: '70%' }} /><div className="skeleton-line" style={{ width: '50%' }} /></div></div>
+            <div className="skeleton-message user"><div className="skeleton-lines right"><div className="skeleton-line" style={{ width: '40%' }} /></div><div className="skeleton-avatar" /></div>
+            <div className="skeleton-message agent"><div className="skeleton-avatar" /><div className="skeleton-lines"><div className="skeleton-line" style={{ width: '85%' }} /><div className="skeleton-line" style={{ width: '60%' }} /><div className="skeleton-line" style={{ width: '30%' }} /></div></div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="chat-area" data-testid="chat-area">
         <div className="chat-empty">
@@ -246,7 +331,7 @@ export function ChatArea() {
         )}
 
         {isStreaming && !hadStreamChunks && (
-          <div className="message agent typing-indicator-container">
+          <div className="message agent typing-indicator-container" aria-live="polite" aria-label="Agent is typing">
             <div className="message-avatar">
               {currentAgent?.avatar ? (
                 <AgentAvatarImg src={currentAgent.avatar} alt={currentAgent.name || 'Agent'} />
@@ -285,13 +370,63 @@ export function ChatArea() {
         <button
           className="scroll-to-bottom-btn"
           onClick={scrollToBottom}
-          aria-label="Scroll to bottom"
+          aria-label={unreadBelow > 0 ? `${unreadBelow} new messages — scroll to bottom` : 'Scroll to bottom'}
           title="Scroll to bottom"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 9l6 6 6-6" />
           </svg>
+          {unreadBelow > 0 && (
+            <span className="scroll-to-bottom-badge">{unreadBelow}</span>
+          )}
         </button>
+      )}
+
+      {/* In-chat search overlay */}
+      {searchOpen && (
+        <div className="chat-search-bar" role="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search in conversation..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0) }}
+            onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                navigateSearch(e.shiftKey ? 'prev' : 'next')
+              }
+              if (e.key === 'Escape') {
+                setSearchOpen(false)
+                setSearchQuery('')
+                setSearchMatchIndex(0)
+              }
+            }}
+            aria-label="Search messages"
+          />
+          {searchQuery && (
+            <span className="chat-search-count">
+              {searchMatches.length > 0 ? `${searchMatchIndex + 1}/${searchMatches.length}` : 'No results'}
+            </span>
+          )}
+          <button className="chat-search-nav" onClick={() => navigateSearch('prev')} aria-label="Previous match" disabled={searchMatches.length === 0}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M18 15l-6-6-6 6" /></svg>
+          </button>
+          <button className="chat-search-nav" onClick={() => navigateSearch('next')} aria-label="Next match" disabled={searchMatches.length === 0}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <button
+            className="chat-search-close"
+            onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchMatchIndex(0) }}
+            aria-label="Close search"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
       )}
     </div>
   )
@@ -390,14 +525,28 @@ const MessageBubble = memo(function MessageBubble({
   const time = format(new Date(message.timestamp), 'h:mm a')
   const isPinned = useStore(state => state.isMessagePinned(message.id))
   const togglePin = useStore(state => state.togglePinMessage)
+  const sendMessage = useStore(state => state.sendMessage)
 
   // System messages (slash command results) render as a centered info block
   if (isSystem) {
+    const isError = message.id.startsWith('error-')
+    const canRetry = isError && message.failedContent
     return (
-      <div className="message system" data-testid={`message-${message.id}`}>
+      <div className={`message system${isError ? ' system-error' : ''}`} data-testid={`message-${message.id}`}>
         <div className="message-content">
-          <div className="message-bubble system-bubble">
+          <div className={`message-bubble system-bubble${isError ? ' error-bubble' : ''}`}>
             <MessageContent content={message.content} />
+            {canRetry && (
+              <button
+                className="message-retry-btn"
+                onClick={() => sendMessage(message.failedContent!, message.failedAttachments)}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                  <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0115.36-6.36L21 8" />
+                </svg>
+                Retry
+              </button>
+            )}
           </div>
         </div>
       </div>

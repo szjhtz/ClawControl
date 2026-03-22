@@ -150,6 +150,7 @@ export function TopBar() {
           className="theme-toggle"
           onClick={toggleTheme}
           aria-label="Toggle theme"
+          aria-pressed={false}
         >
           <svg className="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="5" />
@@ -165,6 +166,7 @@ export function TopBar() {
             className={`panel-toggle ${canvasVisible ? 'active' : ''}`}
             onClick={toggleCanvas}
             aria-label="Toggle canvas"
+            aria-pressed={canvasVisible}
             title="Toggle canvas"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -179,6 +181,7 @@ export function TopBar() {
           className={`panel-toggle ${rightPanelOpen ? 'active' : ''}`}
           onClick={() => setRightPanelOpen(!rightPanelOpen)}
           aria-label="Toggle right panel"
+          aria-pressed={rightPanelOpen}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="3" y="3" width="18" height="18" rx="2" />
