@@ -2330,6 +2330,18 @@ export const useStore = create<AppState>()(
                 messages[messages.length - 1] = updatedMessage
                 return { messages, ...perSession }
               } else {
+                // Ghost bubble guard: if the last message is a finalized assistant
+                // message whose content already contains (or matches) the incoming
+                // chunk, this is a late-arriving duplicate from a secondary event
+                // source (e.g. agent events after chat:final). Suppress it.
+                if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.id.startsWith('streaming-')) {
+                  const existing = lastMessage.content.trim()
+                  const incoming = text.trim()
+                  if (existing && incoming && (existing.includes(incoming) || incoming.startsWith(existing.slice(0, 80)))) {
+                    return { ...perSession }
+                  }
+                }
+
                 // Create new assistant placeholder
                 const { text: cleanText } = stripBase64FromStreaming(text)
                 const newMessage: Message = {

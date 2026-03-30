@@ -35,10 +35,12 @@ interface SessionStreamState {
   mediaLines: string[]
   /** Pre-parsed media URLs from server (data.mediaUrls in agent:assistant events). */
   serverMediaUrls: string[]
+  /** Set when chat:final has been processed — suppresses late-arriving agent events. */
+  finalized: boolean
 }
 
 function createSessionStream(): SessionStreamState {
-  return { source: null, text: '', mode: null, blockOffset: 0, started: false, runId: null, mediaLines: [], serverMediaUrls: [] }
+  return { source: null, text: '', mode: null, blockOffset: 0, started: false, runId: null, mediaLines: [], serverMediaUrls: [], finalized: false }
 }
 
 export class OpenClawClient {
@@ -648,6 +650,10 @@ export class OpenClawClient {
   }
 
   private ensureStream(ss: SessionStreamState, source: 'chat' | 'agent', modeHint: 'delta' | 'cumulative', runId: unknown, sessionKey: string): void {
+    // If chat:final already processed this session, suppress all late events.
+    // This prevents ghost bubbles from agent events that arrive after finalization.
+    if (ss.finalized) return
+
     if (typeof runId === 'string' && !ss.runId) {
       ss.runId = runId
     }
@@ -918,7 +924,11 @@ export class OpenClawClient {
           if (ss.started) {
             this.emit('streamEnd', { sessionKey: eventSessionKey })
           }
-          this.resetSessionStream(sk)
+          // Mark finalized instead of deleting — keeps the session stream alive
+          // so late-arriving agent events are suppressed by the finalized guard.
+          // Full deletion happens on next send cycle (setPrimarySessionKey).
+          ss.finalized = true
+          ss.started = false
         }
         break
       }
@@ -927,6 +937,12 @@ export class OpenClawClient {
         break
       case 'agent': {
         const ss = this.getStream(sk)
+
+        // If chat:final already finalized this session, ignore all late agent events.
+        // Only allow lifecycle end through so the stream is properly cleaned up.
+        if (ss.finalized && !(payload.stream === 'lifecycle' && (payload.data?.phase === 'end' || payload.data?.state === 'complete' || payload.data?.phase === 'error' || payload.data?.state === 'error'))) {
+          return
+        }
 
         if (payload.stream === 'assistant') {
           const hasCanonicalText = typeof payload.data?.text === 'string'
@@ -1132,7 +1148,8 @@ export class OpenClawClient {
               this.emit('streamEnd', { sessionKey: eventSessionKey })
               // Partial reset: keep source and text so late-arriving chat:delta
               // events are still filtered by the source !== 'chat' guard.
-              // chat:final will delete the session stream entirely.
+              // chat:final will mark the session as finalized (not deleted) to
+              // suppress ghost bubbles from any further late events.
               ss.started = false
             }
           }
